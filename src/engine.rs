@@ -163,4 +163,28 @@ mod tests {
         assert_eq!(engine.get(b"k1").unwrap().as_ref(), b"v1");
         assert_eq!(engine.get(b"k3").unwrap().as_ref(), b"v3");
     }
+
+    #[test]
+    fn test_engine_gets_latest_value() {
+        let dir = tempdir().expect("Failed to create temp dir");
+        let wal_path = dir.path().join("primary.wal");
+
+        let options = LsmStorageOptions {
+            target_sst_size: 10,
+        };
+
+        let engine = LsmEngine::open(&wal_path, options);
+        engine.put(b"k1", b"v1");
+        engine.put(b"k2", b"v2");
+        engine.put(b"k3", b"v3"); // Triggers freeze, k1/k2/k3 are in imm_memtable
+
+        engine.put(b"k1", b"v1_new"); // Overwrites k1 in mutable memtable
+        engine.delete(b"k2");         // Tombstones k2 in mutable memtable
+
+        // Check mutable memtable latest values
+        assert_eq!(engine.get(b"k1").unwrap().as_ref(), b"v1_new");
+        assert_eq!(engine.get(b"k2"), None);
+        // Check immutable memtable fallback
+        assert_eq!(engine.get(b"k3").unwrap().as_ref(), b"v3");
+    }
 }
